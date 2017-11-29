@@ -1,0 +1,444 @@
+= MPI Derived Datatypes
+:author: Yottacto
+:backend: slidy
+
+== MPI Datatypes
+[role="incremental"]
+- So far, messages have consisted of contiguous areas in memory
+- Now, we introduce MPI\'s _derived datatypes_,
+- which allow us to specify _noncontiguous_ areas in memory
+
+== Typemap
+
+// an alternative way is use latex command, e.g. \huge $...$
+
+[role="incremental"]
+* definition
++
+["latex", dpi=266]
+---------------------------------------------------------------------
+\begin{equation*}
+Typemap = \{ (type_0, disp_0), ..., (type_{n-1}, disp_{n-1}) \}
+\end{equation*}
+---------------------------------------------------------------------
++
+displacements tell MPI where to find the bits or where to put them. +
+e.g. `MPI::INT` represented as `(int, 0)`
++
+* 'lower bound' of the displacements: location of the first byte
++
+["latex", dpi=266]
+----
+\[
+lb(Typemap) = \min_{0 \leq j < n} disp_j
+\]
+----
++
+* 'upper bound' of the datatype: location of the last byte
++
+["latex", dpi=266]
+----
+\[
+ub(Typemap) = \max_{0 \leq j < n}(disp_j+sizeof(type_j)) + pad
+\]
+----
++
+* extent
++
+["latex", dpi=266]
+----
+\[
+extent(Typemap) = ub(Typename) - lb(Typename)
+\]
+----
+
+
+== Alignment
+
+[role="incremental"]
+* consider the output
++
+[source, cpp]
+----
+std::cout << sizeof(int)  << " " << alignof(int)  << "\n";
+std::cout << sizeof(char) << " " << alignof(char) << "\n";
+----
++
+* result
++
+----
+4 4
+1 1
+----
+
+
+== Alignment
+
+[role="incremental"]
+* consider this
++
+[source, cpp]
+----
+struct foo
+{
+    int  x;
+    char y;
+};
+
+std::cout << sizeof(foo) << "\n";
+----
++
+* and this
++
+[source, cpp]
+----
+struct foo
+{
+    char x;
+    int  y;
+};
+
+std::cout << sizeof(foo) << "\n";
+----
++
+* result is `8`.
+* due to the alignment requirement of `int`
+
+== Alignment
+[role="incremental"]
+* using MPI routine to find the extent of a datatype.
++
+[source, cpp]
+----
+void MPI::Datatype::Get_extent(MPI::Aint& lb, MPI::Aint& extent) const
+
+MPI::Aint lb;
+MPI::Aint extent;
+data_type.Get_extent(lb, extent);
+----
++
+`MPI::Aint` is an integer type that can hold an arbitrary address.
+
+== MPI Derived Datatypes
+
+[role="outline"]
+* Contiguous
+** simplest constructor
+** creates a contiguous datatype
++
+[source, cpp]
+----
+// in c
+int MPI_Type_contiguous(int count, MPI_Datatype oldtype, MPI_Datatype *newtype)
+// in c++
+Datatype Datatype::Create_contiguous(int count) const
+----
++
+* Vector
+** equally spaced blocks of same number of copies of `oldtype`
++
+[source, cpp]
+----
+Datatype Datatype::Create_vector(int count, int blocklength, int stride) const
+----
++
+* Hvector
+* Indexed
+** using `array_of_blocklengths` and `array_of_displacements` specify each pass:[blocks'] length
++
+[source, cpp]
+----
+Datatype Datatype::Create_indexed(int count, const int array_of_blocklengths[], const int array_of_displacements[]) const
+Datatype Datatype::Create_hindexed(int count, const int array_of_blocklengths[], const MPI::Aint array_of_displacements[]) const
+----
++
+* Hindexed
+* Struct
+** creates a structured data type
++
+[source, cpp]
+----
+static MPI::Datatype MPI::Datatype::Create_struct(int count, const int array_of_blocklengths[], const MPI::Aint array_of_displacements[], const MPI::Datatype array_of_types[])
+----
+
+`Hvector` is like `Vector`, and `Hindexed` is like `Indexed`,
+but something is measured in *bytes*.
+
+== MPI Create_vector
+
+* prototype in `c` and `c++`
++
+[source, c]
+----
+// in c
+int MPI_Type_vector(int count, int blocklength, int stride, MPI_Datatype oldtype, MPI_Datatype *newtype)
+----
++
+[source, cpp]
+----
+// in c++
+Datatype Datatype::Create_vector(int count, int blocklength, int stride) const
+----
++
+* description
+** equally spaced `count` blocks
+** each block contains `blocklength` copies
+** spacing between blocks is `stride` multiple of the extent of the old datatpye
+
+
+== MPI Create_vector
+
+* prototype in `c` and `c++`
++
+[source, c]
+----
+// in c
+int MPI_Type_vector(int count, int blocklength, int stride, MPI_Datatype oldtype, MPI_Datatype *newtype)
+----
++
+[source, cpp]
+----
+// in c++
+Datatype Datatype::Create_vector(int count, int blocklength, int stride) const
+----
+
+[role="incremental"]
+* for example
+* assume *oldtype* is `{(double, 0), (char, 8)}`
+* a call to `MPI_Type_vector(2, 3, 4, oldtype, newtype)` will create
++
+----
+{(double, 0),  (char, 8),  (double 16), (char 24), (double, 32), (char, 40),
+ (double, 64), (char, 72), (double 80), (char 88), (double, 96), (char, 104)}
+----
++
+[role="incremental"]
+NOTE: `count` and `blocklength` are *nonnegative* integer, +
+       but `stride` can be *negative*
+
+== MPI Create_vector
+[role="incremental"]
+* as for previous example
+* in *modern* `c++` you can write this to create a matrix type:
++
+[source, cpp]
+----
+auto matrix_type = MPI::INT.Create_vector(n, m, m);
+----
++
+* you need to commit it before use it
++
+[source, cpp]
+----
+matrix_type.Commit();
+----
++
+* when you are done, you need to free it
++
+[source, cpp]
+----
+matrix_type.Free();
+----
+
+== MPI Create_vector
+[role="incremental"]
+.Q&A
+. what did `commit` do?
++
+[role="incremental"]
+- some global configiration
++
+. does this `commit`, `free` style in `c++` pass:['s] favor?
++
+[role="incremental"]
+- definitely not.
+- using RAII (Resource Acquisition Is Initialization) to manage resources
+
+
+== MPI Create_vector
+{nbsp} +
+{nbsp} +
+[big]#let pass:['s] 'write some codes'#
+{nbsp} +
+{nbsp} +
+{nbsp} +
+[big]#simple implementation of _matrix rotation_#
+
+
+== Brief introduction to other routines
+
+[role="incremental"]
+* Indexed
+** using `array_of_blocklengths` and `array_of_displacements` specify each pass:[blocks'] length
++
+[source, cpp]
+----
+Datatype Datatype::Create_indexed(int count, const int array_of_blocklengths[], const int array_of_displacements[]) const
+Datatype Datatype::Create_hindexed(int count, const int array_of_blocklengths[], const MPI::Aint array_of_displacements[]) const
+----
++
+* Struct
+** creates a structured data type
++
+[source, cpp]
+----
+static MPI::Datatype MPI::Datatype::Create_struct(int count, const int array_of_blocklengths[], const MPI::Aint array_of_displacements[], const MPI::Datatype array_of_types[])
+----
+
+== MPI Pack
+
+[role="incremental"]
+- `MPI_Pack` allows the programmer to incrementally add data to a user-provided buffer
+- data has been packed may be sent and received with datatype `MPI_PACKED`
+[role="incremental"]
+** prototype in `c`
++
+[source, c]
+----
+int MPI_Pack(const void *inbuf, int incount, MPI_Datatype datatype, void *outbuf, int outsize,
+int *position, MPI_Comm comm)
+----
++
+** prototype in `c++`
++
+[source, cpp]
+----
+void Datatype::Pack(const void* inbuf, int incount, void *outbuf, int outsize, int& position,
+const Comm &comm) const
+----
++
+** using `MPI_Pack_size` to get the upper bound of space needed to pack a message
++
+** prototype in `c++`
++
+[source, cpp]
+----
+int Datatype::Pack_size(int incount, const Comm& comm) const
+----
+
+== MPI Pack
+[role="incremental"]
+* example
++
+[source, cpp]
+----
+std::vector<int>       int_buffer{0, 1, 2, 3};       // size = 4
+std::string           char_buffer{"this is a test"}; // size = 14
+std::vector<double> double_buffer{0.1, 0.2, 0.3};    // size = 3
+std::vector<char> out_buffer(size);
+
+auto position = 0;
+MPI::INT   .Pack(&int_buffer   .front(), 4,  &out_buffer.front(), size, position, MPI::COMM_WORLD);
+MPI::CHAR  .Pack(&char_buffer  .front(), 14, &out_buffer.front(), size, position, MPI::COMM_WORLD);
+MPI::DOUBLE.Pack(&double_buffer.front(), 3,  &out_buffer.front(), size, position, MPI::COMM_WORLD);
+----
++
+* `position` is incremented by the size of the packed message
+
+
+== MPI Unpack
+
+[role="incremental"]
+- `MPI_Unpack` unpack a message into the receive buffer
+[role="incremental"]
+** prototype in `c`
++
+[source, c]
+----
+int MPI_Unpack(const void *inbuf, int insize, int *position, void *outbuf, int outcount,
+MPI_Datatype datatype, MPI_Comm comm)
+----
++
+** prototype in `c++`
++
+[source, cpp]
+----
+void Datatype::Unpack(const void* inbuf, int insize, void *outbuf, int outcount, int& position,
+const Comm& comm) const
+----
+
+== MPI Unpack
+
+* prototype in `c++`
++
+[source, cpp]
+----
+void Datatype::Unpack(const void* inbuf, int insize, void *outbuf, int outcount, int& position,
+const Comm& comm) const
+----
++
+[role="incremental"]
+** example
++
+[source, cpp]
+----
+std::vector<char> in_buffer(size);
+auto position = 0;
+MPI::INT   .Unpack(&in_buffer.front(), size, &int_buffer   .front(), 4,  position, MPI::COMM_WORLD);
+MPI::CHAR  .Unpack(&in_buffer.front(), size, &char_buffer  .front(), 14, position, MPI::COMM_WORLD);
+MPI::DOUBLE.Unpack(&in_buffer.front(), size, &double_buffer.front(), 3,  position, MPI::COMM_WORLD);
+----
++
+[role="incremental"]
+** `size` is size of input buffer, in bytes (integer)
+** `position` is incremented by the size of the packed message
+
+== Bonus: ????
+
+[role="incremental"]
+* an alternative `c++` interface to MPI
+* better supports *modern* `c++` development styles
+
+== It is Boost.MPI
+
+* an alternative `c++` interface to MPI
+* better supports *modern* `c++` development styles
+
+[role="incremental"]
+** for example
++
+[source, cpp]
+----
+#include <boost/mpi/environment.hpp>
+#include <boost/mpi/communicator.hpp>
+#include <iostream>
+namespace mpi = boost::mpi;
+
+int main()
+{
+    mpi::environment env;
+    mpi::communicator world;
+    std::cout << "I am process " << world.rank() << " of " << world.size() << ".\n";
+}
+----
+
+== It is Boost.MPI
+[role="incremental"]
+* another example with `std::string`
++
+[source, cpp]
+----
+#include <boost/mpi.hpp>
+#include <iostream>
+#include <string>
+#include <boost/serialization/string.hpp>
+namespace mpi = boost::mpi;
+
+int main()
+{
+    mpi::environment env;
+    mpi::communicator world;
+    if (world.rank() == 0) {
+        world.send(1, 0, std::string("Hello"));
+        std::string msg;
+        world.recv(1, 1, msg);
+        std::cout << msg << "!\n";
+    } else {
+        std::string msg;
+        world.recv(0, 0, msg);
+        std::cout << msg << ", "; std::cout.flush();
+        world.send(0, 1, std::string("world"));
+    }
+}
+----
+
