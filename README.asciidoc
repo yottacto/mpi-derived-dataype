@@ -1,2 +1,8 @@
 == Test out MPI derived datatype
 
+* using `MPI::Datatype::Create_vector` and `MPI::Datatype::Create_hvector` to
+achieve a simple matrix rotation over the air
+
+* using `MPI::Datatype::Pack` and `MPI::Datatype::Unpack` to manually
+transfer some data buffers
+

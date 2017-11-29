@@ -28,7 +28,6 @@ int main(int argc, char** argv)
     auto trans_matrix_type = column_type.Create_hvector(n, 1, sizeof(int));
     trans_matrix_type.Commit();
 
-    if (MPI::COMM_WORLD.Get_rank() == 0)
     MPI::COMM_WORLD.Sendrecv(
         &mat.front(), 1, matrix_type, 0, 99,
         &trans_mat.front(), 1, trans_matrix_type, 0, 99
